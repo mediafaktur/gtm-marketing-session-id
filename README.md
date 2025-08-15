@@ -2,6 +2,8 @@
 
 A lightweight, consent-controlled GTM solution for precise, marketing-defined session tracking — with cross-tab continuity, inactivity timeouts, and external referrer detection.
 
+→ **Tracks real-world journeys, not just browser behavior.**
+
 ## Overview
 
 **GTM Marketing Session ID (MSID)** gives you a reliable, consent-controlled way to define and track marketing sessions via Google Tag Manager — without relying on cookies. It replaces the browser’s default “technical” session logic with a lightweight, GTM-managed model that reflects real user journeys.
@@ -10,9 +12,20 @@ A lightweight, consent-controlled GTM solution for precise, marketing-defined se
 
 Default **browser session behavior** is purely technical:
 
-* It lasts as long as stored data (cookie or session storage) exists
-* It doesn’t reset when there’s a real break in the user journey
+* A session lasts as long as the stored data (cookie or sessionStorage) remains available
+* It does **not** necessarily reset when there’s a real break in the user journey
 * Tabs opened hours apart can still be counted as the same session
+* Sessions may persist even if the browser appears to be closed
+
+Two common causes for unexpected session persistence:
+
+1. **Browser process not fully terminated**  
+   On macOS (and sometimes Windows), closing the window may not end the browser process.  
+   Session-scoped data in RAM (e.g., `sessionStorage`) remains intact, so reopening a window continues the same browser session.
+
+2. **“Reopen previous tabs on startup” feature**  
+   Some browsers restore `sessionStorage` from saved state when reopening tabs after a full quit.  
+   This can reconstruct the previous session even though the process was stopped, making it appear as if no new session has started.
 
 > **Technical session** = Defined by browser storage lifecycle (cookie, sessionStorage, etc.) <br>→ Ends only when storage is cleared or expires
 
@@ -77,6 +90,35 @@ MSID solves this by combining:
 | Must avoid cookies due to consent or privacy restrictions | MSID stores data only in `sessionStorage` and `localStorage` — no cookies, no fingerprinting, no PII |
 | Need to control exactly when session tracking runs | MSID runs only if triggered via GTM consent logic, giving full compliance with GDPR, ePrivacy, and other regulations |
 | ITP/ETP can interfere with some storage methods | MSID’s hybrid storage approach is unaffected by ITP/ETP limits on cookies, ensuring consistent behavior in modern browsers |
+
+
+## Session Lifecycle Logic
+
+The following decision flow illustrates how the GTM Marketing Session ID (MSID) decides whether to start a new session or continue an existing one. It shows the exact evaluation order and conditions (tab storage, cross-tab carry-over, timeout, external referrer).
+
+```mermaid
+flowchart LR
+    A([Page Load]) --> E{Timeout exceeded<br/>or External referrer?}
+    E -- Yes --> F[[Start NEW<br/>session ID]]
+    E -- No --> B{Tab-scoped<br/>sessionStorage ID?}
+    B -- Yes --> C([Use existing<br/>session ID])
+    B -- No --> D{Carry-over in<br/>localStorage valid?}
+    D -- Yes --> H[[Carry over<br/>session ID]]
+    D -- No --> F
+
+    classDef start fill:#f0f4f8,stroke:#666,stroke-width:1px;
+    classDef decision fill:#fff9e6,stroke:#e6b800,stroke-width:1px;
+    classDef action fill:#e6f7e6,stroke:#33aa33,stroke-width:1px;
+    classDef new fill:#ffe6e6,stroke:#cc3333,stroke-width:1px;
+    classDef carry fill:#e6f0ff,stroke:#3366cc,stroke-width:1px;
+
+    class A start;
+    class E,B,D decision;
+    class C action;
+    class F new;
+    class H carry;
+
+```
 
 ## Components
 
