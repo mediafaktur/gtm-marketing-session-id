@@ -1,0 +1,42 @@
+<script>
+/**
+ * Persist the decided marketing sessionId into storage (cookie-free).
+ * - This tag should be bound to your consent trigger (or All Pages if allowed).
+ * - It RELIES on the msSessionId variable for the decision (no re-evaluation here).
+ * - Writes:
+ *    sessionStorage.ms_sessionId       -> tab-scoped "truth"
+ *    localStorage.ms_currentSessionId  -> cross-tab continuity (set on start/carry)
+ *    localStorage.ms_lastActivityTs    -> last activity timestamp (ms)
+ *
+ * Usage:
+ *   1) Create the GTM variable: msSessionId
+ *   2) Create this GTM tag and bind to your trigger (e.g., consent granted)
+ *   3) In all other tags, reference variable msSessionId as needed (URL params, event params, etc.)
+ */
+
+(function(){
+  // Force GTM to evaluate the variable and inject the resolved value here.
+  var sid = {{msSessionId}}; // GTM replaces this with the evaluated value at runtime.
+  if (!sid) return;          // Abort if no value available (e.g., storage blocked)
+
+  // Read decision signals placed by the variable (optional but useful).
+  var signals = (window.__ms && window.__ms._signals) || {};
+  var now = signals.now || Date.now();
+
+  // Safe storage writers (guard against strict/privacy modes).
+  function lsSet(k,v){ try { window.localStorage.setItem(k, v); } catch(e){} }
+  function ssSet(k,v){ try { window.sessionStorage.setItem(k, v); } catch(e){} }
+
+  // Always (re)assert the tab-scoped truth for this pageview.
+  ssSet('ms_sessionId', String(sid));
+
+  // Cross-tab continuity:
+  // Set when a NEW session started OR carry-over was allowed on this pageview.
+  if (signals.isStart || signals.carryAllowed) {
+    lsSet('ms_currentSessionId', String(sid));
+  }
+
+  // Update last activity timestamp (this pageview counts as activity).
+  lsSet('ms_lastActivityTs', String(now));
+})();
+</script>
