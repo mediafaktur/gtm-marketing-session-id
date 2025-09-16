@@ -152,3 +152,14 @@ function () {
   // Return the resolved session id to GTM.
   return sid;
 }
+
+// Event senden wenn MSID bereit ist (ohne bestehende Logik zu ändern)
+if (typeof window.__ms !== 'undefined' && window.__ms.sessionId) {
+  // Event für andere Plugins (z.B. TS-Plugin)
+  document.dispatchEvent(new CustomEvent('msid:ready', {
+    detail: {
+      sessionId: window.__ms.sessionId,
+      signals: window.__ms._signals
+    }
+  }));
+}
