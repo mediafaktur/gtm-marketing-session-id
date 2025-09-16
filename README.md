@@ -19,12 +19,12 @@ Default **browser session behavior** is purely technical:
 
 Two common causes for unexpected session persistence:
 
-1. **Browser process not fully terminated**  
-   On macOS (and sometimes Windows), closing the window may not end the browser process.  
+1. **Browser process not fully terminated**
+   On macOS (and sometimes Windows), closing the window may not end the browser process.
    Session-scoped data in RAM (e.g., `sessionStorage`) remains intact, so reopening a window continues the same browser session.
 
-2. **“Reopen previous tabs on startup” feature**  
-   Some browsers restore `sessionStorage` from saved state when reopening tabs after a full quit.  
+2. **“Reopen previous tabs on startup” feature**
+   Some browsers restore `sessionStorage` from saved state when reopening tabs after a full quit.
    This can reconstruct the previous session even though the process was stopped, making it appear as if no new session has started.
 
 > **Technical session** = Defined by browser storage lifecycle (cookie, sessionStorage, etc.) <br>→ Ends only when storage is cleared or expires
@@ -120,6 +120,59 @@ flowchart LR
 
 ```
 
+## Detailed Decision Tree
+
+The following comprehensive decision tree shows all possible scenarios and their outcomes:
+
+```
+🔄 NEW PAGEVIEW (Tab/Page)
+    │
+    ├─ ❓ DOES CURRENT TAB ALREADY HAVE SESSION-ID?
+    │   │
+    │   ├─ ✅ YES (sessionStorage.ms_sessionId exists)
+    │   │   │
+    │   │   ├─ ⏰ TIMEOUT EXCEEDED? (>30 Min)
+    │   │   │   │
+    │   │   │   ├─ ✅ YES → 🆕 START NEW SESSION
+    │   │   │   └─ ❌ NO → 🔗 EXTERNAL REFERRER?
+    │   │   │       │
+    │   │   │       ├─ ✅ YES → 🆕 START NEW SESSION
+    │   │   │       └─ ❌ NO → ♻️ CONTINUE EXISTING SESSION
+    │   │   │
+    │   │   └─ 🔗 EXTERNAL REFERRER?
+    │   │       │
+    │   │       ├─ ✅ YES → 🆕 START NEW SESSION
+    │   │       └─ ❌ NO → ♻️ CONTINUE EXISTING SESSION
+    │   │
+    │   └─ ❌ NO (no tab session ID)
+    │       │
+    │       ├─ ⏰ TIMEOUT EXCEEDED? (>30 Min)
+    │       │   │
+    │       │   ├─ ✅ YES → 🆕 START NEW SESSION
+    │       │   └─ ❌ NO → 🔗 EXTERNAL REFERRER?
+    │       │       │
+    │       │       ├─ ✅ YES → 🆕 START NEW SESSION
+    │       │       └─ ❌ NO → 🔄 CARRY-OVER POSSIBLE?
+    │       │           │
+    │       │           ├─ ✅ YES → ♻️ CONTINUE SESSION VIA CARRY-OVER
+    │       │           └─ ❌ NO → 🆕 START NEW SESSION
+    │       │
+    │       └─ 🔗 EXTERNAL REFERRER?
+    │           │
+    │           ├─ ✅ YES → 🆕 START NEW SESSION
+    │           └─ ❌ NO → 🔄 CARRY-OVER POSSIBLE?
+    │               │
+    │               ├─ ✅ YES → ♻️ CONTINUE SESSION VIA CARRY-OVER
+    │               └─ ❌ NO → 🆕 START NEW SESSION
+```
+
+### Key Decision Points
+
+- **⏰ Timeout Check**: Session ends after 30 minutes of inactivity (configurable)
+- **🔗 External Referrer**: New traffic source triggers new session
+- **🔄 Carry-over**: Cross-tab session continuation only within timeout window
+- **♻️ Session Continuation**: Maintains session ID for valid marketing journeys
+
 ## Components
 
 * **`msSessionId.js`**<br>
@@ -178,5 +231,5 @@ MIT – see [LICENSE](./LICENSE)
 
 ## Author
 
-/ MEDIAFAKTUR – Marketing Performance Precision, [https://mediafaktur.marketing](https://mediafaktur.marketing)  
+/ MEDIAFAKTUR – Marketing Performance Precision, [https://mediafaktur.marketing](https://mediafaktur.marketing)
 Florian Pankarter, [fp@mediafaktur.marketing](mailto:fp@mediafaktur.marketing)
