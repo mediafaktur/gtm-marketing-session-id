@@ -8,6 +8,8 @@ A lightweight, consent-controlled GTM solution for precise, marketing-defined se
 
 **GTM Marketing Session ID (MSID)** gives you a reliable, consent-controlled way to define and track marketing sessions via Google Tag Manager — without relying on cookies. It replaces the browser’s default “technical” session logic with a lightweight, GTM-managed model that reflects real user journeys.
 
+The architecture separates resolution and persistence: a lightweight variable exposes the in-memory ID, while a consent-controlled tag performs the session logic and storage writes. This ensures that no storage access occurs before consent, providing stronger privacy compliance.
+
 ### The Problem
 
 Default **browser session behavior** is purely technical:
@@ -176,12 +178,12 @@ The following comprehensive decision tree shows all possible scenarios and their
 ## Components
 
 * **`msSessionId.js`**<br>
-GTM Custom JavaScript variable that resolves the Marketing Session ID (MSID) on first evaluation; applies marketing rules (inactivity timeout + external referrer) and optional cross-tab carryover; caches the result on window.__ms.sessionId for the entire pageview; performs no storage writes.<br>
-→ Provides a single, stable MSID to all tags without tag-order dependencies; purely read/decide/cache logic.
+GTM Custom JavaScript variable that simply exposes the current Marketing Session ID `(window.__ms.sessionId)` within a pageview.<br>
+→ No storage access, no decision logic; lightweight accessor so all GTM tags can use the same ID immediately.
 
 * **`msid_controller.html`**<br>
-GTM Custom HTML tag that persists the resolved MSID to storage after consent; writes ms_sessionId (sessionStorage), ms_currentSessionId and ms_lastActivityTs (localStorage); uses decision flags exposed on window.__ms._signals by msSessionId.js; contains no cookie logic.<br>
-→ Persists the ID only when allowed (consent-bound), enables controlled cross-tab continuation, and keeps the activity timestamp up to date.
+GTM Custom HTML tag that runs after consent. It applies the full session logic (inactivity timeout, external referrer detection, cross-tab carryover), writes values to `sessionStorage` and `localStorage`, updates `window.__ms.sessionId`, and dispatches a `msid:ready` event for plugin integrations.<br>
+→ Central decision point; ensures persistence and continuity, strictly bound to consent.
 
 ## Installation Guide
 
@@ -189,25 +191,26 @@ GTM Custom HTML tag that persists the resolved MSID to storage after consent; wr
 
 - In GTM, create a new Custom JavaScript Variable.
 - Paste the full contents of `msSessionId.js`.
-- Save as `JS – MSID Resolver` (or similar).
+- Save as `msSessionId` (or similar).
 
-→ This variable must be evaluated before any tags that need the session ID. GTM handles this automatically when the variable is referenced in a tag.
+→ This variable only reads the ID from RAM; it has no logic of its own.
 
 **2. Add the `msid_controller.html` tag**<br>
 
 - In GTM, create a new Custom HTML Tag.
 - Paste the full contents of `msid_controller.html`.
 - Set the trigger to fire only after consent (e.g., `Consent – Analytics Granted`).
+- Mark it as a Setup Tag (Once per Page) for GA4 and any other tags that need the session ID.
 
-→ This tag will write values to `sessionStorage` and `localStorage` using the decision flags from `msSessionId.js`.
+→ This tag decides and persists the session ID according to marketing rules.
 
-**3. Use the MSID in your tags**<br>
+**3. Use the MSID variable in your tags**<br>
 
-Anywhere you need the Marketing Session ID (GA4, server-side forwarding, etc.), use the variable created in step 1.
+Reference `{{msSessionId}}` anywhere you need the Marketing Session ID (e.g., GA4 event parameters, server-side forwarding).
 
 **4. Configure timeout and logic (optional)**<br>
 
-- In `msSessionId.js`, adjust `TIMEOUT_MIN` to your preferred inactivity threshold (default: 30 minutes).
+- In `msid_controller.html`, adjust `TIMEOUT_MIN` to your preferred inactivity threshold (default: 30 minutes).
 - The script already resets the session on external referrer or after timeout.
 - You can customize the referrer logic if needed (e.g., to treat subdomains as “external”).
 
@@ -217,7 +220,7 @@ Use GTM Preview mode to confirm:
 
 - MSID persists across tabs only when within timeout and without external referrer.
 - MSID resets correctly when expected.
-- No storage writes occur before consent.
+- No storage reads or writes occur before consent.
 
 Open DevTools → Application → Storage to inspect sessionStorage and localStorage values:
 
