@@ -31,7 +31,27 @@ function () {
   window.__ms = window.__ms || {};
 
   // Generate ephemeral per-pageview ID (not persisted)
-  var sid = "pvs_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  var randomPart;
+  try {
+    // Use crypto.getRandomValues if available for better randomness
+    if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+      var array = new Uint8Array(4);
+      window.crypto.getRandomValues(array);
+      // IE11-compatible alternative to Array.from()
+      var result = [];
+      for (var i = 0; i < array.length; i++) {
+        result.push(array[i].toString(36));
+      }
+      randomPart = result.join('').slice(0, 6);
+    } else {
+      // Fallback to Math.random for older browsers
+      randomPart = Math.random().toString(36).slice(2, 8);
+    }
+  } catch (e) {
+    // Ultimate fallback
+    randomPart = Math.random().toString(36).slice(2, 8);
+  }
+  var sid = "pvs_" + Date.now() + "_" + randomPart;
 
   // Store in RAM for consistent value across all tags
   window.__ms.sessionId = sid;

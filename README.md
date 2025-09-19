@@ -60,15 +60,32 @@ MSID solves this by combining:
 
 **Why not just use cookies?**
 
-* First-party session cookies are shared across tabs in the same browser session
-* Closing and reopening a tab does not create a new session ID
-* Impossible to detect “soft” session breaks without extra logic
+- **No tab separation** → Cookies are shared across all tabs, so every new tab inherits the same ID. MSID requires “tab truth” – each new tab should start clean unless continuation is explicitly allowed.
+- **ITP/ETP restrictions** → Modern browsers shorten or block cookies, especially Safari. This breaks continuity and creates inconsistent lifetimes. Local/sessionStorage are not affected in the same way.
+- **Header overhead & server side effects** → Cookies are automatically sent with every request. This bloats headers, pollutes server logs, and complicates caching/CDN setups. Storage values stay strictly client-side.
+- **Complex scoping** → Domain/path/`SameSite` attributes must be configured correctly. Mistakes easily lead to inconsistent behavior across subdomains.
+- **Consent risk** → Cookies are visible to servers even before consent if not carefully gated. Storage remains client-only until explicitly written after consent.
+- **Performance** → Accessing cookies requires parsing a single long string of all cookies. Storage gives direct key/value access.
 
 **Why sessionStorage + localStorage?**
 
-* `sessionStorage` resets on tab close → gives us a natural session boundary
-* `localStorage` persists across tabs → lets us re-use session IDs only when rules allow (recent activity, no new referrer)
-* Hybrid approach = fine-grained lifecycle control + marketing-accurate session handling
+- `sessionStorage` gives natural tab-scoped lifecycles → new tab = new context.
+- `localStorage` allows controlled carry-over only when marketing rules say so (timeout not exceeded, no external referrer).
+- Storage is fully client-side → no automatic server transmission, easier consent control.
+- Hybrid approach provides fine-grained lifecycle control and marketing-accurate session handling without cookie limitations.
+
+**Cookies vs. Storage for Marketing Sessions**
+
+| Theme              | ❌ Cookies                                                                 | ✅ Storage                                                                 |
+|:--------------------|:----------------------------------------------------------------------------|:----------------------------------------------------------------------------|
+| **Tab scope**      | Shared across all tabs → no new session on new tab                         | `sessionStorage` is tab-scoped → new tab = fresh session unless carry-over allowed |
+| **Browser limits** | Subject to ITP/ETP caps (esp. Safari)                                      | Not affected by ITP/ETP in the same way                                   |
+| **Server impact**  | Always sent in request headers → header bloat, polluted logs, CDN issues   | Client-only, never leaves browser unless explicitly sent                  |
+| **Configuration**  | Requires careful domain/path/`SameSite` setup                              | Origin-bound automatically, no config needed                              |
+| **Consent control**| Risk of transmission before consent                                        | Reads/writes only after consent-bound tag fires                           |
+| **Performance**    | `document.cookie` is one long string → parsing overhead                    | Direct key/value read/write → efficient                                   |
+
+
 
 ## Key Features
 
@@ -76,10 +93,12 @@ MSID solves this by combining:
 * Configurable inactivity timeout (default: 30 minutes)
 * Optional cross-tab continuation within timeout window
 * Automatic session reset on external referrer
+* Cross-browser compatible (IE9+, all modern browsers)
 * Works in modern browsers without ITP/ETP issues
 * Fully consent-compliant if triggered via GTM consent logic
 * Session ID stable within a pageview for all tags
 * Lightweight: one variable + one persistence tag
+* Robust error handling and graceful degradation
 
 ## What Problem Does MSID Solve?
 
@@ -227,6 +246,19 @@ Open DevTools → Application → Storage to inspect sessionStorage and localSto
 - ms_sessionId → tab-specific ID.
 - ms_currentSessionId → cross-tab carryover ID (only if allowed).
 - ms_lastActivityTs → timestamp of last activity.
+
+## Browser Compatibility
+
+| Browser | Version | Status | Notes |
+|---------|---------|--------|-------|
+| Chrome | 60+ | ✅ Full | Crypto API support |
+| Firefox | 55+ | ✅ Full | Crypto API support |
+| Safari | 11+ | ✅ Full | Crypto API support |
+| Edge | 79+ | ✅ Full | Crypto API support |
+| IE11 | 11 | ✅ Functional | Math.random() fallback |
+| IE9-10 | 9-10 | ✅ Functional | Math.random() fallback |
+
+**Graceful Degradation**: The solution automatically falls back to `Math.random()` for older browsers and provides robust error handling for maximum compatibility.
 
 ## License
 

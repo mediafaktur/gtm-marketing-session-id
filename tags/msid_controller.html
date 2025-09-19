@@ -33,6 +33,15 @@
   var REF_CHECK_MODE = "etld1";         // "etld1" | "hostname" | "custom"
   var INTERNAL_HOSTS = [];              // used only with "custom" mode
 
+  // Normalize INTERNAL_HOSTS for robustness (lowercase, trim)
+  if (INTERNAL_HOSTS && INTERNAL_HOSTS.length > 0) {
+    INTERNAL_HOSTS = INTERNAL_HOSTS.map(function(host) {
+      return (host || "").toString().toLowerCase().trim();
+    }).filter(function(host) {
+      return host.length > 0;
+    });
+  }
+
   // -------------------------------------------------------------------------
   // HELPERS
   // -------------------------------------------------------------------------
@@ -43,19 +52,20 @@
 
   function etld1(host) {
     try {
-      var p = (host || "").split(".");
-      return p.length >= 2 ? p.slice(-2).join(".") : (host || "");
-    } catch (e) { return host || ""; }
+      var normalizedHost = (host || "").toLowerCase();
+      var p = normalizedHost.split(".");
+      return p.length >= 2 ? p.slice(-2).join(".") : normalizedHost;
+    } catch (e) { return (host || "").toLowerCase(); }
   }
 
   function getRefHost() {
     try {
       if (!document.referrer) return "";
-      return new URL(document.referrer).hostname || "";
+      return (new URL(document.referrer).hostname || "").toLowerCase();
     } catch (e) {
       var a = document.createElement("a");
       a.href = document.referrer || "";
-      return a.hostname || "";
+      return (a.hostname || "").toLowerCase();
     }
   }
 
@@ -72,24 +82,52 @@
   }
 
   function genId(ts) {
-    return "session_" + ts + "_" + Math.random().toString(36).slice(2, 10);
+    var randomPart;
+    try {
+      // Use crypto.getRandomValues if available for better randomness
+      if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+        var array = new Uint8Array(6);
+        window.crypto.getRandomValues(array);
+        // IE11-compatible alternative to Array.from()
+        var result = [];
+        for (var i = 0; i < array.length; i++) {
+          result.push(array[i].toString(36));
+        }
+        randomPart = result.join('').slice(0, 8);
+      } else {
+        // Fallback to Math.random for older browsers
+        randomPart = Math.random().toString(36).slice(2, 10);
+      }
+    } catch (e) {
+      // Ultimate fallback
+      randomPart = Math.random().toString(36).slice(2, 10);
+    }
+    return "session_" + ts + "_" + randomPart;
   }
 
   // -------------------------------------------------------------------------
-  // 0) PRE-FETCH RAM ID (no device storage access)
+  // 0) IDEMPOTENT GUARD (prevent double execution)
+  // -------------------------------------------------------------------------
+  // Check if this tag has already run on this page
+  if (window.__ms && window.__ms._persistExecuted) {
+    return; // Skip if already executed
+  }
+
+  // -------------------------------------------------------------------------
+  // 1) PRE-FETCH RAM ID (no device storage access)
   // -------------------------------------------------------------------------
   var current = {{msSessionId}};
 
   // -------------------------------------------------------------------------
-  // 1) SIGNALS
+  // 2) SIGNALS
   // -------------------------------------------------------------------------
   var now = Date.now();
-  var pageHost = location.hostname;
+  var pageHost = location.hostname.toLowerCase();
   var refHost = getRefHost();
   var isExternalRef = isExternalReferrer(refHost, pageHost);
 
   // -------------------------------------------------------------------------
-  // 2) CURRENT STATE (storage reads — consent-bound)
+  // 3) CURRENT STATE (storage reads — consent-bound)
   // -------------------------------------------------------------------------
   var lastTs = +(lsGet("ms_lastActivityTs") || 0);
   var inactiveTooLong = lastTs ? ((now - lastTs) > (TIMEOUT_MIN * 60 * 1000)) : false;
@@ -101,7 +139,7 @@
   var isStart = (!sid && !shouldCarry) || isExternalRef || inactiveTooLong;
 
   // -------------------------------------------------------------------------
-  // 3) RESOLUTION (exactly as original)
+  // 4) RESOLUTION (exactly as original)
   // -------------------------------------------------------------------------
   var finalSid;
   if (isStart) {
@@ -115,7 +153,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // 4) STORAGE WRITES (consent-bound)
+  // 5) STORAGE WRITES (consent-bound)
   // -------------------------------------------------------------------------
   ssSet('ms_sessionId', String(finalSid));
   if (isStart || shouldCarry) {
@@ -124,11 +162,14 @@
   lsSet('ms_lastActivityTs', String(now));
 
   // -------------------------------------------------------------------------
-  // 5) SYNC TO RAM
+  // 6) SYNC TO RAM
   // -------------------------------------------------------------------------
   window.__ms = window.__ms || {};
   window.__ms.sessionId = String(finalSid);
   delete window.__ms.ephemeral;
+
+  // Mark as executed to prevent double execution
+  window.__ms._persistExecuted = true;
 
   // Debug signals (optional)
   window.__ms._signals = {
@@ -143,7 +184,7 @@
   };
 
   // -------------------------------------------------------------------------
-  // 6) NOTIFY OTHER SCRIPTS (CustomEvent)
+  // 7) NOTIFY OTHER SCRIPTS (CustomEvent)
   // -------------------------------------------------------------------------
   try {
     document.dispatchEvent(new CustomEvent('msid:ready', {
@@ -154,12 +195,19 @@
     }));
   } catch(e) {
     // fallback for very old browsers without CustomEvent
-    var evt = document.createEvent('CustomEvent');
-    evt.initCustomEvent('msid:ready', false, false, {
-      sessionId: window.__ms.sessionId,
-      signals: window.__ms._signals
-    });
-    document.dispatchEvent(evt);
+    try {
+      var evt = document.createEvent('CustomEvent');
+      evt.initCustomEvent('msid:ready', false, false, {
+        sessionId: window.__ms.sessionId,
+        signals: window.__ms._signals
+      });
+      document.dispatchEvent(evt);
+    } catch(e2) {
+      // Ultimate fallback: simple event without detail
+      var evt = document.createEvent('Event');
+      evt.initEvent('msid:ready', false, false);
+      document.dispatchEvent(evt);
+    }
   }
 
 }) ();
